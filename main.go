@@ -16,17 +16,11 @@ import (
 )
 
 var (
-	port = flag.Int("port", 8000, "The server port")
+	serverAddr = flag.String("server_addr", "0.0.0.0:80", "The server address in the format of host:port")
 )
 
 func main() {
 
-	// file, err := os.OpenFile("trigger_service.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0777)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// defer file.Close()
-	// log.SetOutput(file)
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: time.StampNano,
@@ -40,7 +34,7 @@ func main() {
 	log.SetReportCaller(true)
 
 	flag.Parse()
-	lis, err := net.Listen("tcp", "0.0.0.0:80")
+	lis, err := net.Listen("tcp", *serverAddr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

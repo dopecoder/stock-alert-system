@@ -17,7 +17,7 @@ var packageDefinition = protoLoader.loadSync(
 var trigger_service = grpc.loadPackageDefinition(packageDefinition).trigger_service;
 
 async function main() {
-    var client = new trigger_service.TriggerService("host.docker.internal:8000",
+    var client = new trigger_service.TriggerService("localhost:80",
         grpc.credentials.createInsecure());
     promisify(client);
 
