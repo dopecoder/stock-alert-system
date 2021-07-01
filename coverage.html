@@ -1,0 +1,1837 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>core: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/revulcan/stock-alert-system/core/machine.go (76.1%)</option>
+				
+				<option value="file1">github.com/revulcan/stock-alert-system/core/mock-repo.go (0.0%)</option>
+				
+				<option value="file2">github.com/revulcan/stock-alert-system/core/trigger.go (75.9%)</option>
+				
+				<option value="file3">github.com/revulcan/stock-alert-system/data_service/ltp_client/client.go (0.0%)</option>
+				
+				<option value="file4">github.com/revulcan/stock-alert-system/data_service/ltp_client/mock-client.go (72.5%)</option>
+				
+				<option value="file5">github.com/revulcan/stock-alert-system/data_service/service/service.go (63.7%)</option>
+				
+				<option value="file6">github.com/revulcan/stock-alert-system/grpc/server/server.go (73.1%)</option>
+				
+				<option value="file7">github.com/revulcan/stock-alert-system/service/service.go (47.5%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">not covered</span>
+				<span class="cov8">covered</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package core
+
+import (
+        "context"
+        "errors"
+        "sync"
+
+        core "github.com/revulcan/stock-alert-system/data_service/core"
+        "github.com/revulcan/stock-alert-system/data_service/service"
+        log "github.com/sirupsen/logrus"
+)
+
+type TriggerMachine struct {
+        Instrument  *core.Instrument
+        PricePoints map[float64]*Trigger
+        Triggers    []*Trigger
+        ds          *service.Service
+        ctx         context.Context
+        cancel      context.CancelFunc
+        started     bool
+        finished    bool
+        mu          *sync.Mutex
+        tUpdates    chan *Trigger
+        onTrigger   chan *Trigger
+        DataPoint   int
+}
+
+func NewTriggerMachine(ctx context.Context, instrument *core.Instrument, ds *service.Service, onTrigger chan *Trigger) *TriggerMachine <span class="cov8" title="1">{
+        thisCtx, cancelFunc := context.WithCancel(ctx)
+        return &amp;TriggerMachine{
+                Instrument:  instrument,
+                PricePoints: make(map[float64]*Trigger),
+                Triggers:    make([]*Trigger, 0),
+                ds:          ds,
+                ctx:         thisCtx,
+                cancel:      cancelFunc,
+                mu:          &amp;sync.Mutex{},
+                tUpdates:    make(chan *Trigger, 5),
+                onTrigger:   onTrigger,
+                DataPoint:   0,
+        }
+}</span>
+func (tm *TriggerMachine) Start() <span class="cov8" title="1">{
+        tm.mu.Lock()
+        if !tm.started </span><span class="cov8" title="1">{
+                go tm.runner()
+                go tm.processTriggerUpdates()
+                tm.started = true
+        }</span>
+        <span class="cov8" title="1">tm.mu.Unlock()</span>
+}
+
+func (tm *TriggerMachine) Stop() <span class="cov8" title="1">{
+        // todo: shold we use lock here?
+        //log.Infoln("Stopping machine")
+        tm.cancel()
+}</span>
+
+func (tm *TriggerMachine) AddTrigger(t *Trigger) error <span class="cov8" title="1">{
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+        if !tm.finished </span><span class="cov8" title="1">{
+                tm.Triggers = append(tm.Triggers, t)
+                tm.PricePoints[t.TPrice] = t
+                log.Infoln("New Trigger Added - ", t)
+                return nil
+        }</span>
+        <span class="cov0" title="0">return errors.New("machine has finished")</span>
+}
+
+func (tm *TriggerMachine) DeleteTrigger(t *Trigger) error <span class="cov0" title="0">{
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+        if !tm.finished </span><span class="cov0" title="0">{
+                delete(tm.PricePoints, t.TPrice)
+                tm.removeTriggerFromList(t)
+                log.Infoln("Deleted Trigger - ", t)
+                return nil
+        }</span>
+        <span class="cov0" title="0">return errors.New("machine has finished")</span>
+}
+
+func (tm *TriggerMachine) DestroyIfEmpty() bool <span class="cov0" title="0">{
+        tm.mu.Lock()
+        defer tm.mu.Unlock()
+        if len(tm.Triggers) == 0 </span><span class="cov0" title="0">{
+                tm.cancel()
+                return true
+        }</span>
+        <span class="cov0" title="0">return false</span>
+}
+
+func (tm *TriggerMachine) runner() <span class="cov8" title="1">{
+        //log.Infoln("Started runner")
+        s := core.NewMockStream()
+        go tm.ds.WatchLTPforInstrs([]*core.Instrument{
+                tm.Instrument,
+        }, s)
+        for </span><span class="cov8" title="1">{
+                //log.Infoln("Entered Runner Loop")
+                select </span>{
+                case &lt;-tm.ctx.Done():<span class="cov8" title="1">
+                        //log.Infoln("Runner Loop -&gt; Context Closed")
+                        tm.mu.Lock()
+                        s.Close()
+                        tm.finished = true
+                        tm.mu.Unlock()
+                        //log.Infoln("Runner Loop -&gt; Context Closed, Returning")
+                        return</span>
+                case data := &lt;-s.Strm:<span class="cov8" title="1">
+                        tm.mu.Lock()
+                        tm.DataPoint += 1
+                        log.Debugf("Received-c Ticker %d for %s -&gt; %v\n", tm.DataPoint, data.ExchangeToken, data)
+                        triggers := tm.Triggers
+                        for _, trigger := range triggers </span><span class="cov8" title="1">{
+                                go trigger.Process(data, tm.tUpdates, tm.DataPoint)
+                        }</span>
+                        <span class="cov8" title="1">log.Debugf("Executed-c trigger.Process %d for  %s -&gt; %v\n", tm.DataPoint, data.ExchangeToken, data)
+                        tm.mu.Unlock()</span>
+                }
+        }
+}
+
+func (tm *TriggerMachine) processTriggerUpdates() <span class="cov8" title="1">{
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-tm.ctx.Done():<span class="cov8" title="1">
+                        //log.Infoln("(TriggerMachine) Exiting processTriggerUpdates")
+                        return</span>
+                case t := &lt;-tm.tUpdates:<span class="cov8" title="1">
+                        if t.Status == NEAR_HIT </span><span class="cov8" title="1">{
+                                log.Debugf("NEAR HIT-b Trigged Ticker for %s\n", t.Instument.ExchangeToken)
+                        }</span> else<span class="cov8" title="1"> {
+                                log.Debugf("HIT-b Trigged Ticker for %s\n", t.Instument.ExchangeToken)
+                        }</span>
+                        <span class="cov8" title="1">if tm.onTrigger != nil </span><span class="cov0" title="0">{
+                                tm.onTrigger &lt;- t
+                        }</span>
+                        <span class="cov8" title="1">if t.Status == HIT </span><span class="cov8" title="1">{
+                                tm.mu.Lock()
+                                delete(tm.PricePoints, t.TPrice)
+                                tm.removeTriggerFromList(t)
+                                tm.mu.Unlock()
+                        }</span>
+                }
+        }
+}
+
+func (tm *TriggerMachine) removeTriggerFromList(trigger *Trigger) <span class="cov8" title="1">{
+        for idx, t := range tm.Triggers </span><span class="cov8" title="1">{
+                if t.Id == trigger.Id </span><span class="cov8" title="1">{
+                        tm.Triggers = remove(tm.Triggers, idx)
+                        return
+                }</span>
+        }
+}
+
+func remove(s []*Trigger, i int) []*Trigger <span class="cov8" title="1">{
+        s[i] = s[len(s)-1]
+        // We do not need to put s[i] at the end, as it will be discarded anyway
+        return s[:len(s)-1]
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package core
+
+import (
+        "bytes"
+        "encoding/json"
+        "log"
+        "net/http"
+        "os"
+)
+
+type MockRepo struct {
+}
+
+func (mr *MockRepo) CreateTrigger(trigger *Trigger) error <span class="cov0" title="0">{
+        return nil
+}</span>
+
+func (mr *MockRepo) UpdateTrigger(trigger *Trigger) error <span class="cov0" title="0">{
+        return nil
+}</span>
+
+func (mr *MockRepo) GetTriggers(GetTriggerOptions) ([]Trigger, error) <span class="cov0" title="0">{
+        return []Trigger{}, nil
+}</span>
+
+func (mr *MockRepo) OnTrigger(trigger *Trigger) error <span class="cov0" title="0">{
+        endPoint := os.Getenv("UPDATES_POST_ENDPOINT")
+        status, err := trigger.GetStatusString()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">message := map[string]interface{}{
+                "id":     trigger.Id,
+                "status": status,
+        }
+
+        bytesRepresentation, err := json.Marshal(message)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalln(err)
+        }</span>
+        <span class="cov0" title="0">req, err := http.NewRequest("POST", endPoint, bytes.NewBuffer(bytesRepresentation))
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalln(err)
+                return err
+        }</span>
+        <span class="cov0" title="0">req.Header.Add("Content-Type", "application/json")
+
+        client := &amp;http.Client{}
+        response, err := client.Do(req)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatalln(err)
+        }</span>
+
+        <span class="cov0" title="0">var result map[string]interface{}
+
+        json.NewDecoder(response.Body).Decode(&amp;result)
+
+        log.Println(result)
+        log.Println(result["data"])
+
+        return nil</span>
+}
+
+func (mr *MockRepo) DeleteTrigger(trigger *Trigger) error <span class="cov0" title="0">{
+        return nil
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package core
+
+import (
+        "encoding/json"
+        "errors"
+        "fmt"
+        "sync"
+
+        "github.com/revulcan/stock-alert-system/data_service/core"
+        log "github.com/sirupsen/logrus"
+)
+
+const (
+        LTP = iota
+)
+
+const (
+        NSE = iota
+        BSE
+)
+
+const (
+        LT = iota
+        LTE
+        GT
+        GTE
+)
+
+type Trigger struct {
+        Id         string
+        TAttrib    int
+        Operator   int
+        TPrice     float64
+        TNearPrice float64
+        Instument  *core.Instrument
+        Status     int
+        mu         sync.Mutex
+        DataPoint  int64
+}
+
+func (t *Trigger) ToString() (string, error) <span class="cov0" title="0">{
+        b, err := json.Marshal(t)
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Println(err)
+                return "", err
+        }</span>
+        <span class="cov0" title="0">return string(b), nil</span>
+}
+
+func (t *Trigger) GetStatusString() (string, error) <span class="cov0" title="0">{
+        if t.Status == NOT_HIT </span><span class="cov0" title="0">{
+                return "NOT_HIT", nil
+        }</span> else<span class="cov0" title="0"> if t.Status == NEAR_HIT </span><span class="cov0" title="0">{
+                return "NEAR_HIT", nil
+        }</span> else<span class="cov0" title="0"> if t.Status == HIT </span><span class="cov0" title="0">{
+                return "HIT", nil
+        }</span>
+        <span class="cov0" title="0">return "", errors.New("status is invalid")</span>
+}
+
+const (
+        ALL = iota
+        NOT_HIT
+        NEAR_HIT
+        HIT
+)
+
+func (t *Trigger) Process(ltp *core.LTP, c chan *Trigger, index int) <span class="cov8" title="1">{
+        t.mu.Lock()
+        t.DataPoint++
+        point := t.DataPoint
+        log.Debugf("Received-d Ticker %d for %s -&gt; %v\n", point, ltp.ExchangeToken, ltp)
+        t.mu.Unlock()
+        if t.Operator == LT </span><span class="cov8" title="1">{
+                if ltp.Ltp &lt; t.TPrice </span><span class="cov8" title="1">{
+                        hitTriggered(t, c)
+                }</span> else<span class="cov8" title="1"> if ltp.Ltp &lt; t.TNearPrice </span><span class="cov8" title="1">{
+                        nearHitTriggered(t, c)
+                }</span>
+        } else<span class="cov8" title="1"> if t.Operator == LTE </span><span class="cov8" title="1">{
+                if ltp.Ltp &lt;= t.TPrice </span><span class="cov8" title="1">{
+                        hitTriggered(t, c)
+                }</span> else<span class="cov8" title="1"> if ltp.Ltp &lt;= t.TNearPrice </span><span class="cov8" title="1">{
+                        nearHitTriggered(t, c)
+                }</span>
+        } else<span class="cov8" title="1"> if t.Operator == GT </span><span class="cov8" title="1">{
+                if ltp.Ltp &gt; t.TPrice </span><span class="cov8" title="1">{
+                        hitTriggered(t, c)
+                }</span> else<span class="cov8" title="1"> if ltp.Ltp &gt; t.TNearPrice </span><span class="cov8" title="1">{
+                        nearHitTriggered(t, c)
+                }</span>
+        } else<span class="cov8" title="1"> if t.Operator == GTE </span><span class="cov8" title="1">{
+                if ltp.Ltp &gt;= t.TPrice </span><span class="cov8" title="1">{
+                        hitTriggered(t, c)
+                }</span> else<span class="cov8" title="1"> if ltp.Ltp &gt;= t.TNearPrice </span><span class="cov8" title="1">{
+                        nearHitTriggered(t, c)
+                }</span>
+        } else<span class="cov0" title="0"> {
+                // error
+                fmt.Println("Reached a invalid Atrrib")
+        }</span>
+        <span class="cov8" title="1">log.Debugf("Processed-d Ticker %d for %s -&gt; %v\n", point, ltp.ExchangeToken, ltp)</span>
+}
+
+func nearHitTriggered(t *Trigger, c chan *Trigger) <span class="cov8" title="1">{
+        t.mu.Lock()
+        defer t.mu.Unlock()
+        hit := t.Status == HIT
+        nearHit := t.Status == NEAR_HIT
+        if !nearHit &amp;&amp; !hit </span><span class="cov8" title="1">{
+                log.Debugf("NEAR HIT-a Trigged Ticker %d for %s\n", t.DataPoint, t.Instument.ExchangeToken)
+                t.Status = NEAR_HIT
+                c &lt;- t
+        }</span>
+}
+
+func hitTriggered(t *Trigger, c chan *Trigger) <span class="cov8" title="1">{
+        t.mu.Lock()
+        defer t.mu.Unlock()
+        hit := t.Status == HIT
+        if !hit </span><span class="cov8" title="1">{
+                log.Debugf("HIT-a Trigged Ticker %d for %s\n", t.DataPoint, t.Instument.ExchangeToken)
+                t.Status = HIT
+                c &lt;- t
+        }</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package ltp_client
+
+import (
+        "context"
+        "fmt"
+        "math"
+        "reflect"
+        "strconv"
+        "sync"
+        "time"
+
+        SmartApi "github.com/angelbroking-github/smartapigo"
+        "github.com/revulcan/stock-alert-system/data_service/angel"
+        "github.com/revulcan/stock-alert-system/data_service/core"
+        log "github.com/sirupsen/logrus"
+)
+
+type InstrumentSubscription map[int]chan *core.LTP
+
+type AngelLTPClient struct {
+        mu                    *sync.Mutex
+        apiKey                string
+        usename               string
+        password              string
+        socketClient          *angel.SocketClient
+        subscriptions         map[int][]*core.Instrument
+        subscribedChannels    map[string]InstrumentSubscription
+        subscribedInstruments map[string]*core.Instrument
+        count                 int
+        ctx                   context.Context
+        socketCtx             context.Context
+        cancel                context.CancelFunc
+        socketCancel          context.CancelFunc
+        connected             bool
+        dataPointCount        map[string]int64
+}
+
+func NewAngelLTPClient(apiKey string, usename string, password string) *AngelLTPClient <span class="cov0" title="0">{
+        client := &amp;AngelLTPClient{
+                apiKey:                apiKey,
+                usename:               usename,
+                password:              password,
+                subscriptions:         make(map[int][]*core.Instrument),
+                subscribedChannels:    make(map[string]InstrumentSubscription),
+                subscribedInstruments: make(map[string]*core.Instrument),
+                count:                 0,
+                mu:                    &amp;sync.Mutex{},
+                connected:             false,
+                dataPointCount:        make(map[string]int64),
+        }
+        return client
+}</span>
+
+func (a *AngelLTPClient) Init() error <span class="cov0" title="0">{
+        return nil
+}</span>
+
+func (a *AngelLTPClient) subscribe() error <span class="cov0" title="0">{
+        if a.socketClient != nil &amp;&amp; a.socketClient.Conn != nil </span><span class="cov0" title="0">{
+                // log.Println("Trying to close existing connection")
+                err := a.socketClient.Close()
+                if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+                <span class="cov0" title="0">if a.socketCancel != nil </span><span class="cov0" title="0">{
+                        a.socketCancel()
+                }</span>
+        }
+
+        <span class="cov0" title="0">if a.cancel != nil </span><span class="cov0" title="0">{
+                //log.Println("Trying to close existing context")
+                a.cancel()
+        }</span>
+        <span class="cov0" title="0">ctx, cancel := context.WithCancel(context.Background())
+        a.ctx = ctx
+        a.cancel = cancel
+
+        angelClient := SmartApi.New(a.usename, a.password, a.apiKey)
+        session, err := angelClient.GenerateSession()
+        log.Println(session)
+
+        if err != nil </span><span class="cov0" title="0">{
+                log.Println(err.Error())
+                return nil
+        }</span>
+        //Get User Profile
+        <span class="cov0" title="0">session.UserProfile, err = angelClient.GetUserProfile()
+
+        if err != nil </span><span class="cov0" title="0">{
+                log.Println(err.Error())
+                return err
+        }</span>
+
+        <span class="cov0" title="0">instrumentQueryString, err := a.buildInstrumentQueryString()
+        log.Printf("Instrument Query String : %v", instrumentQueryString)
+
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">socketCtx, socketCancel := context.WithCancel(a.ctx)
+        a.socketCancel = socketCancel
+        a.socketCtx = socketCtx
+
+        a.socketClient = angel.New(session.ClientCode, session.FeedToken, instrumentQueryString)
+
+        // Assign callbacks
+        a.socketClient.OnError(onErrorAngel(a, socketCtx))
+        a.socketClient.OnClose(onCloseAngel(a, socketCtx))
+        a.socketClient.OnMessage(onMessageAngel(a, socketCtx))
+        a.socketClient.OnConnect(onConnectAngel(a, socketCtx))
+        a.socketClient.OnReconnect(onReconnectAngel(a, socketCtx))
+        a.socketClient.OnNoReconnect(onNoReconnectAngel(a, socketCtx))
+
+        // Start Consuming Data
+        go a.socketClient.Serve(socketCtx)
+        return nil</span>
+}
+
+// func (a *AngelLTPClient) subscribe() error {
+//         instrumentQueryString, err := a.buildInstrumentQueryString()
+//         //log.Println(instrumentQueryString)
+
+//         if err != nil {
+//                 return err
+//         }
+//         return nil
+// }
+
+// func (a *AngelLTPClient) subscribe() error {
+//         if a != nil &amp;&amp; a.connected &amp;&amp; a.socketClient != nil {
+//                 instrumentQueryString, err := a.buildInstrumentQueryString()
+//                 if err != nil {
+//                         return err
+//                 }
+//                 a.socketClient.Scrips = ""
+//                 err = a.socketClient.Subscribe()
+//                 if err != nil {
+//                         log.Fatalf("(AngelLtpClient) subscribe err : %v\n", err)
+//                 }
+//                 a.socketClient.Scrips = instrumentQueryString
+//                 log.Debugln("Scrips: ", a.socketClient.Scrips)
+//                 err = a.socketClient.Subscribe()
+//                 if err != nil {
+//                         log.Fatalf("(AngelLtpClient) subscribe err : %v\n", err)
+//                 }
+//         }
+//         return nil
+// }
+
+func (a *AngelLTPClient) Subscribe(instruments []*core.Instrument, stream chan *core.LTP) (int, error) <span class="cov0" title="0">{
+        a.mu.Lock()
+        defer a.mu.Unlock()
+        newCount := a.incrementAndGetCount()
+        subscriptionChanged := false
+        for _, instrument := range instruments </span><span class="cov0" title="0">{
+
+                _, pointCountExists := a.dataPointCount[instrument.ExchangeToken]
+                if !pointCountExists </span><span class="cov0" title="0">{
+                        a.dataPointCount[instrument.ExchangeToken] = 0
+                }</span>
+
+                <span class="cov0" title="0">_, exists := a.subscribedChannels[instrument.ExchangeToken]
+                if !exists </span><span class="cov0" title="0">{
+                        a.subscribedChannels[instrument.ExchangeToken] = make(InstrumentSubscription)
+                        a.subscribedInstruments[instrument.ExchangeToken] = instrument
+                        subscriptionChanged = true
+                }</span>
+                <span class="cov0" title="0">a.subscribedChannels[instrument.ExchangeToken][newCount] = stream</span>
+        }
+        <span class="cov0" title="0">a.subscriptions[newCount] = instruments
+
+        if subscriptionChanged </span><span class="cov0" title="0">{
+                err := a.subscribe()
+                if err != nil </span><span class="cov0" title="0">{
+                        return newCount, err
+                }</span>
+        }
+        <span class="cov0" title="0">return newCount, nil</span>
+}
+
+func (a *AngelLTPClient) UnSubscribe(id int) error <span class="cov0" title="0">{
+        a.mu.Lock()
+        defer a.mu.Unlock()
+        instrs, exists := a.subscriptions[id]
+        log.Infof("UnSubscribe : instrs -&gt; %v", instrs)
+
+        subscriptionChanged := false
+        if !exists </span><span class="cov0" title="0">{
+                return fmt.Errorf("SubscriptionHandle with %d does not exist", id)
+        }</span>
+        <span class="cov0" title="0">for _, instrument := range instrs </span><span class="cov0" title="0">{
+                _, exists := a.subscribedChannels[instrument.ExchangeToken]
+                if exists </span><span class="cov0" title="0">{
+                        log.Infof("UnSubscribe : with %v\n", a.subscribedChannels[instrument.ExchangeToken])
+                        delete(a.subscribedChannels[instrument.ExchangeToken], id)
+                }</span>
+
+                <span class="cov0" title="0">if len(a.subscribedChannels[instrument.ExchangeToken]) == 0 </span><span class="cov0" title="0">{
+                        delete(a.subscribedChannels, instrument.ExchangeToken)
+                        delete(a.subscribedInstruments, instrument.ExchangeToken)
+                        subscriptionChanged = true
+                }</span>
+        }
+        <span class="cov0" title="0">delete(a.subscriptions, id)
+
+        if subscriptionChanged </span><span class="cov0" title="0">{
+                err := a.subscribe()
+                return err
+        }</span>
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (a *AngelLTPClient) incrementAndGetCount() int <span class="cov0" title="0">{
+        a.count = a.count + 1
+        return a.count
+}</span>
+
+// Triggered when any error is raised
+func onErrorAngel(a *AngelLTPClient, c context.Context) func(error) <span class="cov0" title="0">{
+        return func(err error) </span><span class="cov0" title="0">{
+                if a == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+                <span class="cov0" title="0">select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        log.Println("Error: ", err)</span>
+                }
+        }
+
+}
+
+// Triggered when websocket connection is closed
+func onCloseAngel(a *AngelLTPClient, c context.Context) func(code int, reason string) <span class="cov0" title="0">{
+        return func(code int, reason string) </span><span class="cov0" title="0">{
+                if a == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+                <span class="cov0" title="0">select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        log.Debugf("Closed Websocket")
+                        log.Println("Close: ", code, reason)
+                        a.mu.Lock()
+                        a.connected = false
+                        a.mu.Unlock()</span>
+                }
+        }
+}
+
+// Triggered when connection is established and ready to send and accept data
+func onConnectAngel(a *AngelLTPClient, c context.Context) func() <span class="cov0" title="0">{
+        return func() </span><span class="cov0" title="0">{
+                select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        log.Debugf("Connected to Websocket")
+                        a.mu.Lock()
+                        a.connected = true
+                        a.mu.Unlock()
+                        err := a.subscribe()
+                        if err != nil </span><span class="cov0" title="0">{
+                                log.Errorln(err)
+                        }</span>
+                }
+        }
+}
+
+// Triggered when a message is received
+func onMessageAngel(a *AngelLTPClient, c context.Context) func(message []map[string]interface{}) <span class="cov0" title="0">{
+        return func(message []map[string]interface{}) </span><span class="cov0" title="0">{
+                if a == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+                <span class="cov0" title="0">select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        a.broadcastLTP(message)</span>
+                }
+        }
+}
+
+// Triggered when reconnection is attempted which is enabled by default
+func onReconnectAngel(a *AngelLTPClient, c context.Context) func(attempt int, delay time.Duration) <span class="cov0" title="0">{
+        return func(attempt int, delay time.Duration) </span><span class="cov0" title="0">{
+                if a == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+                <span class="cov0" title="0">select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        log.Debugf("Reconnected to Websocket")
+                        a.mu.Lock()
+                        a.connected = true
+                        log.Debugf("Trying to subscribe to instruments")
+                        err := a.subscribe()
+                        if err != nil </span><span class="cov0" title="0">{
+                                log.Fatalf("(AngelLtpClient) subscribe err : %v\n", err)
+                        }</span>
+                        <span class="cov0" title="0">a.mu.Unlock()
+                        log.Printf("Reconnect attempt %d in %fs\n", attempt, delay.Seconds())</span>
+                }
+        }
+}
+
+// Triggered when maximum number of reconnect attempt is made and the program is terminated
+func onNoReconnectAngel(a *AngelLTPClient, c context.Context) func(int) <span class="cov0" title="0">{
+        return func(attempt int) </span><span class="cov0" title="0">{
+                if a == nil </span><span class="cov0" title="0">{
+                        return
+                }</span>
+                <span class="cov0" title="0">select </span>{
+                case &lt;-c.Done():<span class="cov0" title="0">
+                        return</span>
+                default:<span class="cov0" title="0">
+                        log.Fatalf("Maximum no of reconnect attempt reached: %d\n", attempt)</span>
+                }
+        }
+}
+
+func (a *AngelLTPClient) buildInstrumentQueryString() (string, error) <span class="cov0" title="0">{
+        token := ""
+        exchangeMapping := map[string]string{
+                "NSE": "nse_cm",
+                "BSE": "bse_cm",
+                "NFO": "nse_fo",
+                "MCX": "mcx_fo",
+                "CDS": "cde_fo",
+        }
+
+        for exchToken, instr := range a.subscribedInstruments </span><span class="cov0" title="0">{
+                fmtString := "&amp;%s|%s"
+                if len(token) == 0 </span><span class="cov0" title="0">{
+                        fmtString = "%s|%s"
+                }</span>
+                <span class="cov0" title="0">token += fmt.Sprintf(fmtString, exchangeMapping[instr.Exchange], exchToken)</span>
+        }
+        <span class="cov0" title="0">return token, nil</span>
+}
+
+// Triggered when a message is received
+func (a *AngelLTPClient) broadcastLTP(message []map[string]interface{}) <span class="cov0" title="0">{
+        for _, m := range message </span><span class="cov0" title="0">{
+                tk, exchTkExists := m["tk"]
+                low := m["lo"]
+                high := m["h"]
+                open := m["op"]
+                close := m["c"]
+                ltp := m["ltp"]
+                token := fmt.Sprintf("%v", tk)
+
+                a.mu.Lock()
+                a.dataPointCount[token] += 1
+                log.Debugf("Received Ticker %d for  %s -&gt; %v\n", a.dataPointCount[token], token, m)
+                if exchTkExists </span><span class="cov0" title="0">{
+                        exchToken := fmt.Sprintf("%v", token)
+
+                        subs, exists := a.subscribedChannels[exchToken]
+
+                        if exists </span><span class="cov0" title="0">{
+                                for _, channel := range subs </span><span class="cov0" title="0">{
+                                        a.mu.Unlock()
+                                        log.Debugf("Sending Ticker %d for  %s -&gt; %v\n", a.dataPointCount[token], token, m)
+                                        channel &lt;- &amp;core.LTP{
+                                                Ltp:            getFloat(ltp),
+                                                Open:           getFloat(open),
+                                                Close:          getFloat(close),
+                                                Low:            getFloat(low),
+                                                High:           getFloat(high),
+                                                ExchangeToken:  exchToken,
+                                                InstrumentType: core.Stock,
+                                        }
+                                        log.Debugf("Sent Ticker %d for  %s -&gt; %v\n", a.dataPointCount[token], token, m)
+                                        a.mu.Lock()
+                                }</span>
+                        }
+                }
+                <span class="cov0" title="0">a.mu.Unlock()</span>
+                // else {
+                //         log.Printf("Received an invalid ticker for %s -&gt; %v\n", m["tk"], m)
+                // }
+        }
+}
+
+var floatType = reflect.TypeOf(float64(0.0))
+var stringType = reflect.TypeOf("")
+
+func getFloat(unk interface{}) float64 <span class="cov0" title="0">{
+        switch i := unk.(type) </span>{
+        case float64:<span class="cov0" title="0">
+                return i</span>
+        case float32:<span class="cov0" title="0">
+                return float64(i)</span>
+        case int64:<span class="cov0" title="0">
+                return float64(i)</span>
+        case int32:<span class="cov0" title="0">
+                return float64(i)</span>
+        case int:<span class="cov0" title="0">
+                return float64(i)</span>
+        case uint64:<span class="cov0" title="0">
+                return float64(i)</span>
+        case uint32:<span class="cov0" title="0">
+                return float64(i)</span>
+        case uint:<span class="cov0" title="0">
+                return float64(i)</span>
+        case string:<span class="cov0" title="0">
+                num, e := strconv.ParseFloat(i, 64)
+                if e != nil </span><span class="cov0" title="0">{
+                        return 0.0
+                }</span>
+                <span class="cov0" title="0">return num</span>
+        default:<span class="cov0" title="0">
+                return math.NaN()</span>
+                // v := reflect.ValueOf(unk)
+                // v = reflect.Indirect(v)
+                // if v.Type().ConvertibleTo(floatType) {
+                //         fv := v.Convert(floatType)
+                //         return fv.Float()
+                // } else if v.Type().ConvertibleTo(stringType) {
+                //         sv := v.Convert(stringType)
+                //         s := sv.String()
+                //         num, e := strconv.ParseFloat(s, 64)
+                //         if e != nil {
+                //                 return 0.0
+                //         }
+                //         return num
+                // } else {
+                //         return math.NaN()
+                // }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package ltp_client
+
+import (
+        "fmt"
+        "sync"
+        "time"
+
+        "github.com/revulcan/stock-alert-system/data_service/core"
+)
+
+type MockLTPClient struct {
+        mu                    *sync.RWMutex
+        subscriptions         map[int][]*core.Instrument
+        subscribedChannels    map[string]InstrumentSubscription
+        subscribedInstruments map[string]*core.Instrument
+        count                 int
+}
+
+func NewMockLTPClient() *MockLTPClient <span class="cov8" title="1">{
+
+        c := &amp;MockLTPClient{
+                subscriptions:         make(map[int][]*core.Instrument),
+                subscribedChannels:    make(map[string]InstrumentSubscription),
+                subscribedInstruments: make(map[string]*core.Instrument),
+                count:                 0,
+                mu:                    &amp;sync.RWMutex{},
+        }
+        go c.startBroadcast()
+        return c
+}</span>
+
+func NewMockLTPClientWithControl(start float64, end float64, step float64, sleepDuration time.Duration) *MockLTPClient <span class="cov0" title="0">{
+
+        c := &amp;MockLTPClient{
+                subscriptions:         make(map[int][]*core.Instrument),
+                subscribedChannels:    make(map[string]InstrumentSubscription),
+                subscribedInstruments: make(map[string]*core.Instrument),
+                count:                 0,
+                mu:                    &amp;sync.RWMutex{},
+        }
+        go c.startBroadcastWithControl(start, end, step, sleepDuration)
+        return c
+}</span>
+
+func (a *MockLTPClient) Init() error <span class="cov0" title="0">{
+        return nil
+}</span>
+
+func (a *MockLTPClient) Subscribe(instruments []*core.Instrument, stream chan *core.LTP) (int, error) <span class="cov8" title="1">{
+        a.mu.Lock()
+        defer a.mu.Unlock()
+        fmt.Println(instruments)
+        newCount := a.incrementAndGetCount()
+        // subscriptionChanged := false
+        for _, instrument := range instruments </span><span class="cov8" title="1">{
+
+                _, exists := a.subscribedChannels[instrument.ExchangeToken]
+                if !exists </span><span class="cov8" title="1">{
+                        a.subscribedChannels[instrument.ExchangeToken] = make(InstrumentSubscription)
+                        a.subscribedInstruments[instrument.ExchangeToken] = instrument
+                        // subscriptionChanged = true
+                }</span>
+                <span class="cov8" title="1">a.subscribedChannels[instrument.ExchangeToken][newCount] = stream</span>
+        }
+        <span class="cov8" title="1">a.subscriptions[newCount] = instruments
+        return newCount, nil</span>
+}
+
+func (a *MockLTPClient) UnSubscribe(id int) error <span class="cov8" title="1">{
+        a.mu.Lock()
+        instrs, exists := a.subscriptions[id]
+        fmt.Printf("(MockLTPClient) UnSubscribe : instrs -&gt; %v", instrs)
+        // subscriptionChanged := false
+        if !exists </span><span class="cov0" title="0">{
+                return fmt.Errorf("SubscriptionHandle with %d does not exist", id)
+        }</span>
+        <span class="cov8" title="1">for _, instrument := range instrs </span><span class="cov8" title="1">{
+                _, exists := a.subscribedChannels[instrument.ExchangeToken]
+                if exists </span><span class="cov8" title="1">{
+                        fmt.Printf("(MockLTPClient) UnSubscribe : with %v\n", a.subscribedChannels[instrument.ExchangeToken])
+                        delete(a.subscribedChannels[instrument.ExchangeToken], id)
+                }</span>
+
+                <span class="cov8" title="1">if len(a.subscribedChannels[instrument.ExchangeToken]) == 0 </span><span class="cov8" title="1">{
+                        delete(a.subscribedChannels, instrument.ExchangeToken)
+                        delete(a.subscribedInstruments, instrument.ExchangeToken)
+                        fmt.Printf("(MockLTPClient) UnSubscribe : deleting subscribed instruments %v\n", a.subscribedInstruments)
+                        // subscriptionChanged = true
+                }</span>
+        }
+        <span class="cov8" title="1">delete(a.subscriptions, id)
+        a.mu.Unlock()
+        return nil</span>
+}
+
+func (a *MockLTPClient) startBroadcast() <span class="cov8" title="1">{
+
+        for </span><span class="cov8" title="1">{
+                arr := make([]map[string]interface{}, 0)
+                a.mu.RLock()
+                instrMap := a.subscribedInstruments
+                for _, instrument := range instrMap </span><span class="cov8" title="1">{
+                        msg := make(map[string]interface{})
+                        msg["tk"] = instrument.ExchangeToken
+                        arr = append(arr, msg)
+                }</span>
+                <span class="cov8" title="1">a.mu.RUnlock()
+
+                if len(arr) &gt; 0 </span><span class="cov8" title="1">{
+                        a.broadcastLTP(arr, 100.0)
+                }</span>
+                <span class="cov8" title="1">time.Sleep(time.Second * 2)</span>
+        }
+}
+
+func (a *MockLTPClient) startBroadcastWithControl(start float64, end float64, step float64, sleepDuration time.Duration) <span class="cov0" title="0">{
+
+        //fmt.Println("startBroadcastWithControl : started")
+        for </span><span class="cov0" title="0">{
+                for price := start; (step &gt; 0 &amp;&amp; price &lt;= end) || (step &lt; 0 &amp;&amp; price &gt;= end); price = price + step </span><span class="cov0" title="0">{
+                        arr := make([]map[string]interface{}, 0)
+
+                        a.mu.RLock()
+                        instrMap := a.subscribedInstruments
+                        for _, instrument := range instrMap </span><span class="cov0" title="0">{
+                                msg := make(map[string]interface{})
+                                msg["tk"] = instrument.ExchangeToken
+                                arr = append(arr, msg)
+                        }</span>
+                        <span class="cov0" title="0">a.mu.RUnlock()
+
+                        if len(arr) &gt; 0 </span><span class="cov0" title="0">{
+                                //fmt.Println("startBroadcastWithControl : Broadcasting LTP")
+                                a.broadcastLTP(arr, price)
+                                time.Sleep(sleepDuration)
+                                price = price + step
+                                if (step &gt; 0 &amp;&amp; price &gt;= end) || (step &lt; 0 &amp;&amp; price &lt;= end) </span><span class="cov0" title="0">{
+                                        break</span>
+                                }
+                        } else<span class="cov0" title="0"> {
+                                //fmt.Println("startBroadcastWithControl : no Instruments")
+                                time.Sleep(sleepDuration)
+                        }</span>
+
+                }
+
+        }
+}
+
+func (a *MockLTPClient) incrementAndGetCount() int <span class="cov8" title="1">{
+        a.count = a.count + 1
+        return a.count
+}</span>
+
+// Triggered when a message is received
+func (a *MockLTPClient) broadcastLTP(message []map[string]interface{}, ltp float64) <span class="cov8" title="1">{
+        for _, m := range message </span><span class="cov8" title="1">{
+                fmt.Printf("Received ticker for %s -&gt; %v\n", m["tk"], m)
+                tk, exchTkExists := m["tk"]
+                if exchTkExists </span><span class="cov8" title="1">{
+                        exchToken := fmt.Sprintf("%v", tk)
+
+                        a.mu.Lock()
+                        subs, exists := a.subscribedChannels[exchToken]
+                        a.mu.Unlock()
+
+                        if exists </span><span class="cov8" title="1">{
+                                for _, channel := range subs </span><span class="cov8" title="1">{
+                                        fmt.Printf("Trying to send ticker over channel %s -&gt; %v\n", m["tk"], m)
+                                        channel &lt;- &amp;core.LTP{
+                                                Ltp:            ltp,
+                                                Open:           100,
+                                                Close:          100,
+                                                Low:            100,
+                                                High:           100,
+                                                ExchangeToken:  exchToken,
+                                                Scrip:          "Scrip",
+                                                InstrumentType: core.Stock,
+                                        }
+                                        fmt.Printf("Sent ticker over channel %s -&gt; %v\n", m["tk"], ltp)
+                                }</span>
+                        }
+                }
+                // else {
+                //         fmt.Printf("Received an invalid ticker for %s -&gt; %v\n", m["tk"], m)
+                // }
+        }
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">package service
+
+import (
+        "fmt"
+        "sync"
+
+        "github.com/revulcan/stock-alert-system/data_service/core"
+        "github.com/revulcan/stock-alert-system/data_service/grpc/data_service"
+        log "github.com/sirupsen/logrus"
+)
+
+type Service struct {
+        mu                 *sync.Mutex
+        client             core.LtpClient
+        instrumentsWatched map[string]map[int]chan *core.LTP
+        ltpRecvChannel     chan *core.LTP
+        prevTickers        map[string]*core.LTP
+        done               chan bool
+        listening          bool
+        finished           bool
+        recvPointCount     map[string]int64
+        sendPointCount     map[string]int64
+}
+
+func New(c core.LtpClient) *Service <span class="cov8" title="1">{
+        return &amp;Service{
+                client:             c,
+                instrumentsWatched: make(map[string]map[int]chan *core.LTP, 5),
+                ltpRecvChannel:     make(chan *core.LTP, 5),
+                done:               make(chan bool, 5),
+                listening:          false,
+                finished:           false,
+                mu:                 &amp;sync.Mutex{},
+                prevTickers:        make(map[string]*core.LTP),
+                recvPointCount:     make(map[string]int64),
+                sendPointCount:     make(map[string]int64),
+        }
+}</span>
+
+func (s *Service) Init() <span class="cov8" title="1">{
+        // start listner
+        go s.startListner()
+}</span>
+
+// func (s *Service) WatchLTPforInstruments(instruments *data_service.Instruments, stream data_service.LTPService_WatchLTPforInstrumentsServer) error {
+
+//         watcherChannel := make(chan core.LTP)
+
+//         s.subscribe(instruments, watcherChannel)
+
+//         for {
+//                 ticker, more := &lt;-watcherChannel
+//                 if more {
+//                         //log.Infoln("received ticker", ticker)
+//                         if err := stream.Send(ticker); err != nil {
+//                                 s.unSubscribe()
+//                                 return err
+//                         }
+//                 } else {
+//                         //log.Infoln("received all jobs")
+//                         break
+//                 }
+//         }
+
+//         s.unSubscribe()
+
+//         return nil
+// }
+
+// func (s *Service) WatchLTPforInstr(instrument core.Instrument, stream core.Stream) error {
+//         return s.WatchLTPforInstrs([]core.Instrument{instrument}, stream)
+// }
+
+func (s *Service) WatchLTPforInstrs(instruments []*core.Instrument, stream core.Stream) error <span class="cov8" title="1">{
+        watcherChannel := make(chan *core.LTP, 5)
+
+        handle, err := s.subscribe(instruments, watcherChannel)
+        if err != nil </span><span class="cov0" title="0">{
+                close(watcherChannel)
+                return err
+        }</span>
+
+        <span class="cov8" title="1">for </span><span class="cov8" title="1">{
+                ticker, more := &lt;-watcherChannel
+                if more </span><span class="cov8" title="1">{
+                        //log.Infoln("received ticker", ticker)
+                        // prevTicker, tickExists := s.prevTickers[ticker.ExchangeToken]
+                        // if tickExists &amp;&amp; prevTicker.Ltp == ticker.Ltp {
+                        //         continue
+                        // } else {
+                        //         s.prevTickers[ticker.ExchangeToken] = ticker
+                        // }
+
+                        s.mu.Lock()
+                        s.sendPointCount[ticker.ExchangeToken] += 1
+                        cnt := s.sendPointCount[ticker.ExchangeToken]
+                        s.mu.Unlock()
+                        log.Debugf("Received-c Ticker %d for  %s -&gt; %v\n", cnt, ticker.ExchangeToken, ticker)
+
+                        if err := stream.Send(&amp;data_service.LTP{
+                                Ltp:            ticker.Ltp,
+                                Open:           ticker.Open,
+                                Close:          ticker.Close,
+                                Low:            ticker.Low,
+                                High:           ticker.High,
+                                ExchangeToken:  ticker.ExchangeToken,
+                                Scrip:          ticker.Scrip,
+                                InstrumentType: data_service.InstrumentType(ticker.InstrumentType),
+                        }); err != nil </span><span class="cov0" title="0">{
+                                s.unSubscribe(handle)
+                                close(watcherChannel)
+                                return err
+                        }</span>
+                        <span class="cov8" title="1">log.Debugf("Sent-c Ticker %d for  %s -&gt; %v\n", cnt, ticker.ExchangeToken, ticker)</span>
+
+                } else<span class="cov0" title="0"> {
+                        //log.Infoln("received all jobs")
+                        break</span>
+                }
+        }
+
+        <span class="cov0" title="0">s.unSubscribe(handle)
+        close(watcherChannel)
+        return nil</span>
+}
+
+func (s *Service) subscribe(instruments []*core.Instrument, c chan *core.LTP) (int, error) <span class="cov8" title="1">{
+
+        sd, err := s.client.Subscribe(instruments, s.ltpRecvChannel)
+        if err != nil </span><span class="cov0" title="0">{
+                return -1, err
+        }</span>
+
+        <span class="cov8" title="1">s.mu.Lock()
+        defer s.mu.Unlock()
+        for _, i := range instruments </span><span class="cov8" title="1">{
+                _, exists := s.instrumentsWatched[i.ExchangeToken]
+                if !exists </span><span class="cov8" title="1">{
+                        s.instrumentsWatched[i.ExchangeToken] = make(map[int]chan *core.LTP)
+                }</span>
+                <span class="cov8" title="1">s.instrumentsWatched[i.ExchangeToken][sd] = c</span>
+        }
+        <span class="cov8" title="1">fmt.Printf("(Service) subscribe: subscribed to %d\n", sd)
+        return sd, nil</span>
+}
+
+func (s *Service) unSubscribe(handle int) error <span class="cov0" title="0">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        fmt.Printf("(Service) unSubscribe: unsubscribe from %d\n", handle)
+        if handle != -1 </span><span class="cov0" title="0">{
+                err := s.client.UnSubscribe(handle)
+                for k := range s.instrumentsWatched </span><span class="cov0" title="0">{
+                        _, exists := s.instrumentsWatched[k][handle]
+                        if exists </span><span class="cov0" title="0">{
+                                fmt.Printf("(Service) unSubscribe: deleting handle in %v\n", s.instrumentsWatched[k])
+                                delete(s.instrumentsWatched[k], handle)
+                        }</span>
+                }
+                <span class="cov0" title="0">for k := range s.instrumentsWatched </span><span class="cov0" title="0">{
+                        if len(s.instrumentsWatched[k]) == 0 </span><span class="cov0" title="0">{
+                                delete(s.instrumentsWatched, k)
+                        }</span>
+                }
+                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        return err
+                }</span>
+        }
+        <span class="cov0" title="0">return nil</span>
+}
+
+func (s *Service) startListner() <span class="cov8" title="1">{
+        //log.Infoln("(Service) startListner: Started listner")
+
+        s.mu.Lock()
+        s.listening = true
+        s.mu.Unlock()
+
+        for </span><span class="cov8" title="1">{
+                if s.finished </span><span class="cov8" title="1">{
+                        break</span>
+                }
+
+                <span class="cov8" title="1">select </span>{
+                case &lt;-s.done:<span class="cov8" title="1">
+                        //log.Infoln("(Service) startListner: started &lt;-s.done")
+
+                        s.mu.Lock()
+                        s.finished = true
+                        s.mu.Unlock()</span>
+
+                        //log.Infoln("(Service) startListner: finished &lt;-s.done")
+
+                case ltp, more := &lt;-s.ltpRecvChannel:<span class="cov8" title="1">
+                        if !more </span><span class="cov0" title="0">{
+                                //log.Infoln("(Service) startListner: closing ltp := &lt;-s.ltpRecvChannel")
+                                // todo: need to restart the client if this happens, or it means someone closed the channel
+                                s.mu.Lock()
+                                s.finished = true
+                                s.mu.Unlock()
+                        }</span> else<span class="cov8" title="1"> {
+                                s.mu.Lock()
+                                s.recvPointCount[ltp.ExchangeToken] += 1
+                                log.Debugf("Received-b Ticker %d for  %s -&gt; %v\n", s.recvPointCount[ltp.ExchangeToken], ltp.ExchangeToken, ltp)
+
+                                instrChannelMap := s.instrumentsWatched[ltp.ExchangeToken]
+                                for _, c := range instrChannelMap </span><span class="cov8" title="1">{
+                                        c &lt;- ltp
+                                }</span>
+                                <span class="cov8" title="1">log.Debugf("Sent-b Ticker %d for  %s -&gt; %v\n", s.recvPointCount[ltp.ExchangeToken], ltp.ExchangeToken, ltp)
+                                s.mu.Unlock()</span>
+                        }
+                }
+        }
+
+        <span class="cov8" title="1">s.mu.Lock()
+        s.listening = false
+        s.mu.Unlock()</span>
+}
+
+func (s *Service) Close() <span class="cov8" title="1">{
+        //log.Infoln("(Service) Close: Closing listner")
+        s.mu.Lock()
+        s.done &lt;- true
+        s.mu.Unlock()
+        // todo : fix the sender to exit if channel is closed and then close this
+        // close(s.ltpRecvChannel)
+        //log.Infoln("(Service) Close: Closed listner")
+}</span>
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">package server
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "os"
+        "strings"
+        "sync"
+        "time"
+
+        "github.com/joho/godotenv"
+        "github.com/revulcan/stock-alert-system/core"
+        data_core "github.com/revulcan/stock-alert-system/data_service/core"
+        "github.com/revulcan/stock-alert-system/data_service/ltp_client"
+        "github.com/revulcan/stock-alert-system/grpc/trigger_service"
+        "github.com/revulcan/stock-alert-system/service"
+        log "github.com/sirupsen/logrus"
+)
+
+var NotStartedErr error = fmt.Errorf("service not started")
+
+type TriggerServiceServer struct {
+        trigger_service.UnimplementedTriggerServiceServer
+        ts      service.TriggerService
+        started bool
+        stopped bool
+        mu      *sync.Mutex
+}
+
+func NewTriggerSystemServer() *TriggerServiceServer <span class="cov8" title="1">{
+        log.Info("NewTriggerSystem Created, returning...")
+        return &amp;TriggerServiceServer{
+                started: false,
+                stopped: true,
+                mu:      &amp;sync.Mutex{},
+        }
+}</span>
+
+func NewMockTriggerSystemServer() *TriggerServiceServer <span class="cov8" title="1">{
+
+        err := godotenv.Load()
+        if err != nil </span><span class="cov0" title="0">{
+                log.Fatal("Error loading .env file")
+        }</span>
+
+        <span class="cov8" title="1">config := &amp;core.Config{
+                UpdatePostEndpoint: os.Getenv("UPDATES_POST_ENDPOINT"),
+                KiteToken:          "",
+                KiteApiKey:         "",
+                AngelApiKey:        "",
+                AngelClientId:      "",
+                AngelPassword:      "",
+        }
+
+        ts := service.NewTriggerSystem(context.Background(), ltp_client.NewMockLTPClient(), &amp;core.MockRepo{}, config)
+        ts.SetupService()
+        return &amp;TriggerServiceServer{
+                ts:      ts,
+                started: false,
+                stopped: true,
+        }</span>
+}
+
+func (s *TriggerServiceServer) CreateTrigger(c context.Context, req *trigger_service.CreateTriggerReq) (*trigger_service.CreateTriggerRes, error) <span class="cov8" title="1">{
+        log.Info("Entered CreateTrigger service")
+        err := s.checkIfStarted()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">if len(strings.Trim(req.Id, " ")) == 0 || s.idAlreadyExists(req.Id) </span><span class="cov8" title="1">{
+                return nil, fmt.Errorf("invalid trigger id - %s", req.Id)
+        }</span>
+
+        <span class="cov8" title="1">log.Info("Calling CreateTrigger fn")
+        err = s.ts.CreateTrigger(
+                &amp;core.Trigger{
+                        Id:         req.Id,
+                        TAttrib:    int(req.TAttrib),
+                        Operator:   int(req.Operator),
+                        TPrice:     req.TPrice,
+                        TNearPrice: req.TNearPrice,
+                        DataPoint:  0,
+                        Instument: &amp;data_core.Instrument{
+                                Scrip:          req.Scrip,
+                                KiteToken:      req.KiteToken,
+                                ExchangeToken:  req.ExchangeToken,
+                                Exchange:       req.Exchange.String(),
+                                InstrumentType: data_core.Stock,
+                        },
+                })
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error("CreateTrigger : ", err)
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">log.Info("Completed CreateTrigger fn, returning...")
+        return &amp;trigger_service.CreateTriggerRes{Ok: true}, nil</span>
+}
+
+func (s *TriggerServiceServer) DeleteTrigger(c context.Context, req *trigger_service.DeleteTriggerReq) (*trigger_service.DeleteTriggerRes, error) <span class="cov0" title="0">{
+        log.Info("Entered DeleteTrigger service")
+        err := s.checkIfStarted()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov0" title="0">if len(strings.Trim(req.TriggerId, " ")) == 0 || !s.idAlreadyExists(req.TriggerId) </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("invalid trigger id - %s", req.TriggerId)
+        }</span>
+
+        <span class="cov0" title="0">log.Info("Calling DeleteTrigger fn")
+        err = s.ts.DeleteTrigger(req.TriggerId)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error("DeleteTrigger : ", err)
+                return nil, err
+        }</span>
+        <span class="cov0" title="0">log.Info("Completed DeleteTrigger fn, returning...")
+        return &amp;trigger_service.DeleteTriggerRes{Ok: true}, nil</span>
+}
+
+func (s *TriggerServiceServer) StartService(c context.Context, req *trigger_service.StartServiceReq) (*trigger_service.StartServiceRes, error) <span class="cov8" title="1">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        log.Info("Entered StartService")
+        if !s.started &amp;&amp; (req.Override || (IsTradingTime(time.Now()) || req.Mock)) </span><span class="cov8" title="1">{
+
+                log.Info("Calling StartService fn")
+
+                err := godotenv.Load()
+                if err != nil </span><span class="cov0" title="0">{
+                        log.Fatal("Error loading .env file")
+                }</span>
+
+                <span class="cov8" title="1">config := &amp;core.Config{
+                        UpdatePostEndpoint: os.Getenv("UPDATES_POST_ENDPOINT"),
+                        KiteToken:          os.Getenv("KITE_APIKEY"),
+                        KiteApiKey:         os.Getenv("KITE_TOKEN"),
+                        AngelApiKey:        os.Getenv("ANGEL_APIKEY"),
+                        AngelClientId:      os.Getenv("ANGEL_CLIENTID"),
+                        AngelPassword:      os.Getenv("ANGEL_PASSWORD"),
+                }
+                var client data_core.LtpClient
+                if req.Mock </span><span class="cov8" title="1">{
+                        client = ltp_client.NewMockLTPClient()
+                }</span> else<span class="cov0" title="0"> {
+                        client = ltp_client.NewAngelLTPClient(config.AngelApiKey, config.AngelClientId, config.AngelPassword)
+
+                }</span>
+                <span class="cov8" title="1">clientInitErr := client.Init()
+                if clientInitErr != nil </span><span class="cov0" title="0">{
+                        log.Fatalf("clientInitErr: %v", clientInitErr)
+                        return &amp;trigger_service.StartServiceRes{
+                                Ok: false,
+                        }, clientInitErr
+                }</span>
+
+                <span class="cov8" title="1">log.Info("Completed StartService fn, returning...")
+                s.ts = service.NewTriggerSystem(context.Background(), client, &amp;core.MockRepo{}, config)
+                s.started = true
+                s.stopped = false
+                return &amp;trigger_service.StartServiceRes{
+                        Ok: true,
+                }, nil</span>
+        } else<span class="cov0" title="0"> if s.started </span><span class="cov0" title="0">{
+                return &amp;trigger_service.StartServiceRes{
+                        Ok: false,
+                }, errors.New("service already started")
+        }</span>
+        <span class="cov0" title="0">return &amp;trigger_service.StartServiceRes{
+                Ok: false,
+        }, errors.New("override to start service")</span>
+}
+
+func (s *TriggerServiceServer) StopService(c context.Context, req *trigger_service.StopServiceReq) (*trigger_service.StopServiceRes, error) <span class="cov8" title="1">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        log.Info("Entered StopService")
+        if s.started &amp;&amp; (req.Override || (!IsTradingTime(time.Now()) || req.Mock)) </span><span class="cov8" title="1">{
+
+                log.Info("Calling StopService fn")
+                s.ts.Stop()
+                log.Info("Completed StopService fn, returning...")
+                s.started = false
+                s.stopped = true
+                return &amp;trigger_service.StopServiceRes{
+                        Ok: true,
+                }, nil
+        }</span> else<span class="cov0" title="0"> if s.stopped </span><span class="cov0" title="0">{
+                return &amp;trigger_service.StopServiceRes{
+                        Ok: false,
+                }, errors.New("service already stopped")
+        }</span>
+        <span class="cov0" title="0">return &amp;trigger_service.StopServiceRes{
+                Ok: false,
+        }, errors.New("override to stop service")</span>
+}
+
+func (s *TriggerServiceServer) GetTrigger(c context.Context, req *trigger_service.GetTriggerReq) (*trigger_service.GetTriggerRes, error) <span class="cov8" title="1">{
+        log.Info("Entered GetTrigger service")
+        err := s.checkIfStarted()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">log.Info("Calling GetTrigger fn")
+        t, err := s.ts.GetTrigger(req.TriggerId)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error("GetTrigger : ", err)
+                return nil, err
+        }</span>
+        <span class="cov8" title="1">log.Info("Completed GetTrigger fn, returning...")
+        exchng := 0
+        if t.Instument.Exchange == "BSE" </span><span class="cov0" title="0">{
+                exchng = 1
+        }</span>
+
+        <span class="cov8" title="1">return &amp;trigger_service.GetTriggerRes{
+                Id:            t.Id,
+                TAttrib:       trigger_service.TriggerAttrib(t.TAttrib),
+                Operator:      trigger_service.TriggerOperator(t.Operator),
+                TPrice:        t.TPrice,
+                TNearPrice:    t.TNearPrice,
+                Scrip:         t.Instument.Scrip,
+                KiteToken:     t.Instument.KiteToken,
+                ExchangeToken: t.Instument.ExchangeToken,
+                Exchange:      trigger_service.Exchange(exchng),
+        }, nil</span>
+}
+
+func (s *TriggerServiceServer) GetTriggerStatus(c context.Context, req *trigger_service.TriggerStatusReq) (*trigger_service.TriggerStatusRes, error) <span class="cov8" title="1">{
+        log.Info("Entered GetTriggerStatus service")
+        err := s.checkIfStarted()
+        if err != nil </span><span class="cov8" title="1">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">log.Info("Calling GetTriggerStatus fn")
+        st, err := s.ts.GetTriggerStatus(req.TriggerId)
+        if err != nil </span><span class="cov0" title="0">{
+                log.Error("GetTriggerStatus : ", err)
+                return &amp;trigger_service.TriggerStatusRes{Status: ""}, err
+        }</span>
+        <span class="cov8" title="1">log.Info("Completed GetTriggerStatus fn, returning...")
+        return &amp;trigger_service.TriggerStatusRes{Status: st}, nil</span>
+}
+
+func (s *TriggerServiceServer) idAlreadyExists(id string) bool <span class="cov8" title="1">{
+        trig, _ := s.ts.GetTrigger(id)
+        log.Infof("ID %s already exists? - %t, returning...", id, trig != nil)
+        return trig != nil
+}</span>
+
+func IsTradingTime(t time.Time) bool <span class="cov8" title="1">{
+        location, err := time.LoadLocation("Asia/Kolkata")
+        startTime := time.Date(t.Year(), t.Month(), t.Day(), 9, 0, 0, 0, location)
+        endTime := time.Date(t.Year(), t.Month(), t.Day(), 15, 30, 0, 0, location)
+
+        if err != nil </span><span class="cov0" title="0">{
+                fmt.Println(err)
+        }</span>
+
+        <span class="cov8" title="1">istTime := t.In(location)
+        fmt.Println("ZONE : ", location, " Time : ", istTime) // IST
+        isTradingTime := istTime.After(startTime) &amp;&amp; istTime.Before(endTime)
+        notSaturday := istTime.Weekday() != time.Saturday
+        notSunday := istTime.Weekday() != time.Sunday
+        if isTradingTime &amp;&amp; notSaturday &amp;&amp; notSunday </span><span class="cov8" title="1">{
+                return true
+        }</span>
+        <span class="cov8" title="1">return false</span>
+}
+
+func (s *TriggerServiceServer) checkIfStarted() error <span class="cov8" title="1">{
+        s.mu.Lock()
+        defer s.mu.Unlock()
+        if !s.started </span><span class="cov8" title="1">{
+                return NotStartedErr
+        }</span>
+        <span class="cov8" title="1">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package service
+
+import (
+        "context"
+        "errors"
+        "fmt"
+        "sync"
+
+        "github.com/revulcan/stock-alert-system/core"
+        ds_core "github.com/revulcan/stock-alert-system/data_service/core"
+        "github.com/revulcan/stock-alert-system/data_service/service"
+        log "github.com/sirupsen/logrus"
+)
+
+type TriggerService interface {
+        GetTrigger(id string) (*core.Trigger, error)
+        CreateTrigger(*core.Trigger) error
+        GetTriggerStatus(id string) (string, error)
+        DeleteTrigger(id string) error
+        Stop() error
+}
+
+type TriggerSystem struct {
+        machineCount int
+        triggerCount int
+        machines     map[string]*core.TriggerMachine
+        triggers     map[string]*core.Trigger
+        repo         core.TriggerSystemRepo
+        ds           *service.Service
+        onTrigger    chan *core.Trigger
+        ctx          context.Context
+        cancel       context.CancelFunc
+        mu           *sync.Mutex
+        config       *core.Config
+}
+
+func NewTriggerSystem(ctx context.Context, c ds_core.LtpClient, repo core.TriggerSystemRepo, config *core.Config) *TriggerSystem <span class="cov8" title="1">{
+        thisCtx, cancel := context.WithCancel(ctx)
+        ts := &amp;TriggerSystem{
+                machineCount: 0,
+                triggerCount: 0,
+                machines:     make(map[string]*core.TriggerMachine),
+                triggers:     make(map[string]*core.Trigger),
+                ds:           service.New(c),
+                repo:         repo,
+                onTrigger:    make(chan *core.Trigger, 5),
+                ctx:          thisCtx,
+                cancel:       cancel,
+                mu:           &amp;sync.Mutex{},
+                config:       config,
+        }
+        ts.ds.Init()
+        go ts.onTriggerHandler()
+        return ts
+}</span>
+
+func (ts *TriggerSystem) SetupService() []error <span class="cov0" title="0">{
+        ts.mu.Lock()
+        defer ts.mu.Unlock()
+        errors := make([]error, 0)
+        triggers, err := ts.repo.GetTriggers(core.GetTriggerOptions{
+                Filter: core.ALL,
+        })
+        if err != nil </span><span class="cov0" title="0">{
+                errors = append(errors, err)
+                return errors
+        }</span>
+        <span class="cov0" title="0">for _, trigger := range triggers </span><span class="cov0" title="0">{
+                if trigger.Status != core.HIT </span><span class="cov0" title="0">{
+                        _, tmExists := ts.machines[trigger.Instument.Scrip]
+                        if !tmExists </span><span class="cov0" title="0">{
+                                tm := core.NewTriggerMachine(context.Background(), trigger.Instument, ts.ds, ts.onTrigger)
+                                tm.Start()
+                                ts.machines[trigger.Instument.Scrip] = tm
+                        }</span>
+                        <span class="cov0" title="0">err := ts.setupTrigger(&amp;trigger)
+                        if err != nil </span><span class="cov0" title="0">{
+                                errors = append(errors, err)
+                        }</span>
+                }
+        }
+        <span class="cov0" title="0">return errors</span>
+}
+
+func (ts *TriggerSystem) GetTrigger(id string) (*core.Trigger, error) <span class="cov8" title="1">{
+        ts.mu.Lock()
+        defer ts.mu.Unlock()
+        trigger, exists := ts.triggers[id]
+        if !exists </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("invalid trigger id - %s", id)
+        }</span>
+        <span class="cov8" title="1">return trigger, nil</span>
+}
+
+func (ts *TriggerSystem) CreateTrigger(t *core.Trigger) error <span class="cov8" title="1">{
+        ts.mu.Lock()
+        defer ts.mu.Unlock()
+        machine, machineExists := ts.machines[t.Instument.Scrip]
+        if machineExists </span><span class="cov0" title="0">{
+                // check if trigger with exact same PricePoint exist
+                existingT, triggerExists := machine.PricePoints[t.TPrice]
+                if triggerExists &amp;&amp; (existingT.Status == core.NOT_HIT || existingT.Status == core.NEAR_HIT) </span><span class="cov0" title="0">{
+                        return fmt.Errorf("trigger already exists - %s", existingT.Id)
+                }</span> else<span class="cov0" title="0"> {
+                        err := ts.setupTrigger(t)
+                        return err
+                }</span>
+        } else<span class="cov8" title="1"> {
+                tm := core.NewTriggerMachine(context.Background(), t.Instument, ts.ds, ts.onTrigger)
+                tm.Start()
+                ts.machines[t.Instument.Scrip] = tm
+                err := ts.setupTrigger(t)
+                return err
+        }</span>
+}
+
+func (ts *TriggerSystem) DeleteTrigger(id string) error <span class="cov8" title="1">{
+
+        t, tExists := ts.triggers[id]
+        if !tExists </span><span class="cov8" title="1">{
+                return fmt.Errorf("trigger not found - %s", id)
+        }</span>
+        <span class="cov8" title="1">m, tmExists := ts.machines[t.Instument.Scrip]
+        if !tmExists </span><span class="cov0" title="0">{
+                return fmt.Errorf("trigger machine not found - %s", id)
+        }</span>
+
+        <span class="cov8" title="1">err := ts.repo.DeleteTrigger(t)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">err = m.DeleteTrigger(t)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">delete(ts.triggers, t.Id)
+        return nil</span>
+}
+
+func (ts *TriggerSystem) GetTriggerStatus(id string) (string, error) <span class="cov8" title="1">{
+        ts.mu.Lock()
+        defer ts.mu.Unlock()
+        t, tExists := ts.triggers[id]
+        if !tExists </span><span class="cov0" title="0">{
+                return "", fmt.Errorf("trigger not found - %s", id)
+        }</span>
+        <span class="cov8" title="1">repr, err := t.ToString()
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov8" title="1">return repr, nil</span>
+}
+
+func (ts *TriggerSystem) setupTrigger(t *core.Trigger) error <span class="cov8" title="1">{
+        err := ts.repo.CreateTrigger(t)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov8" title="1">m, tmExists := ts.machines[t.Instument.Scrip]
+        if !tmExists </span><span class="cov0" title="0">{
+                return errors.New("trigger machine doesn't exist")
+        }</span>
+        <span class="cov8" title="1">err = m.AddTrigger(t)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov8" title="1">ts.triggers[t.Id] = t
+
+        return nil</span>
+}
+
+func (ts *TriggerSystem) onTriggerHandler() <span class="cov8" title="1">{
+        for </span><span class="cov8" title="1">{
+                select </span>{
+                case &lt;-ts.ctx.Done():<span class="cov0" title="0">
+                        return</span>
+                case triggerUpdate := &lt;-ts.onTrigger:<span class="cov0" title="0">
+                        go func() </span><span class="cov0" title="0">{
+                                // todo : delete it or leave it to get status for later
+                                // if triggerUpdate.Status == core.HIT {
+                                //         delete(ts.triggers, triggerUpdate.Id)
+                                // }
+                                if triggerUpdate.Status == core.NEAR_HIT </span><span class="cov0" title="0">{
+                                        log.Debugf("NEAR HIT-b Trigged Ticker for %s\n", triggerUpdate.Instument.ExchangeToken)
+                                }</span> else<span class="cov0" title="0"> {
+                                        log.Debugf("HIT-b Trigged Ticker for %s\n", triggerUpdate.Instument.ExchangeToken)
+                                }</span>
+
+                                <span class="cov0" title="0">ts.mu.Lock()
+                                machine := ts.machines[triggerUpdate.Instument.Scrip]
+                                if machine != nil </span><span class="cov0" title="0">{
+                                        destroyed := machine.DestroyIfEmpty()
+                                        if destroyed </span><span class="cov0" title="0">{
+                                                delete(ts.machines, triggerUpdate.Instument.Scrip)
+                                        }</span>
+                                }
+                                <span class="cov0" title="0">ts.mu.Unlock()
+
+                                err := ts.repo.OnTrigger(triggerUpdate)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        status, _ := triggerUpdate.GetStatusString()
+                                        fmt.Printf("Error on invoking OnTrigger %s - %s\n", triggerUpdate.Id, status)
+                                }</span> else<span class="cov0" title="0"> {
+                                        fmt.Printf("Trigger with ID %s got triggered with status - %d\n", triggerUpdate.Id, triggerUpdate.Status)
+                                }</span>
+                        }()
+                }
+        }
+}
+
+func (ts *TriggerSystem) Stop() error <span class="cov0" title="0">{
+        ts.ds.Close()
+        ts.cancel()
+        return nil
+}</span>
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

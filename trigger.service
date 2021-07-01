@@ -1,0 +1,23 @@
+[Unit]
+Description=Trigger Service
+After=network.target remote-fs.target nss-lookup.target httpd-init.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=ubuntu
+EnvironmentFile=/home/ubuntu/resignal-backend/trigger_service/.env
+WorkingDirectory=/home/ubuntu/resignal-backend/trigger_service
+PermissionsStartOnly=true
+ExecStartPre=/bin/mkdir -p /var/log/trigger_service
+ExecStartPre=/bin/chown syslog:adm /var/log/trigger_service
+ExecStartPre=/bin/chmod 755 /var/log/trigger_service
+ExecStart=sudo /home/ubuntu/resignal-backend/trigger_service/trigger_service
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=trigger_service
+
+[Install]
+WantedBy=multi-user.target

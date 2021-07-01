@@ -1,0 +1,59 @@
+
+syntax = "proto3";
+
+option go_package = "github.com/revulcan/stock-alert-system/data_service/grpc/data_service";
+option java_multiple_files = true;
+option java_package = "com.revulcan.revulcan_backend.trigger_service.data_service";
+option java_outer_classname = "DataServiceProto";
+
+package data_service;
+
+enum InstrumentType {
+	Stock = 0;
+	Index = 1;
+}
+
+message Instrument {
+	string Scrip                  = 1;     
+	string KiteToken              = 2;  
+	string ExchangeToken          = 3;
+	string Exchange               = 4;
+	InstrumentType instrumentType = 5;
+}
+
+message Instruments {
+    repeated Instrument items = 1;
+}
+
+message LTP {
+	double Ltp                    = 1;
+	double Open                   = 2;
+	double Close                  = 3;
+	double Low                    = 4;
+	double High                   = 5;
+	string ExchangeToken          = 6;
+	string Scrip                  = 7;
+	InstrumentType InstrumentType = 8;
+	Error e                       = 9;
+}
+
+message Error {
+	string code                   = 1;
+	string message                = 2;
+}
+
+service LTPService {
+	rpc WatchLTPforInstruments(Instruments) returns (stream LTP) {}
+}
+
+service LTPServiceManager {
+	rpc WatchLTPforInstruments(Instruments) returns (stream LTP) {}
+}
+ 
+
+// service ServiceManager {
+// 	rpc GetServiceStatus() returns (int, error) {}
+// 	rpc StartService() returns (int, error) {}
+// 	rpc StopService() returns (int, error) {}
+// 	rpc ConfigureService() returns (int, error) {}
+// }

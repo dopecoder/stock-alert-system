@@ -1,0 +1,7 @@
+# Common Stuff
+.env
+.DS_Store
+
+# NPM Stuff
+node_modules
+package-lock.json

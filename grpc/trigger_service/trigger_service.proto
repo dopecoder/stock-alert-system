@@ -1,0 +1,109 @@
+
+syntax = "proto3";
+
+option go_package = "github.com/revulcan/stock-alert-system/grpc/trigger_service";
+option java_multiple_files = true;
+option java_package = "com.revulcan.revulcan_backend.trigger_service";
+option java_outer_classname = "TriggerServiceProto";
+
+package trigger_service;
+
+enum TriggerAttrib {
+	LTP = 0;
+}
+
+enum TriggerOperator {
+	LT = 0;
+	LTE = 1;
+	GT = 2;
+	GTE = 3;
+}
+
+enum Exchange {
+	NSE = 0;
+	BSE = 1;
+}
+
+message CreateTriggerReq {
+	string id                 = 1;
+	TriggerAttrib tAttrib     = 2;
+	TriggerOperator operator  = 3;
+	double tPrice             = 4;
+	double tNearPrice         = 5;
+	string scrip              = 6;
+	string kiteToken          = 7;
+	string exchangeToken      = 8;
+	Exchange Exchange         = 9;
+}
+
+message CreateTriggerRes {
+	bool ok                   = 1;
+}
+
+message TriggerStatusReq {
+    string triggerId          = 1;
+}
+
+message TriggerStatusRes {
+    string status             = 1;
+}
+
+message GetTriggerReq {
+    string triggerId          = 1;
+}
+
+message GetTriggerRes {
+	string id                 = 1;
+	TriggerAttrib tAttrib     = 2;
+	TriggerOperator operator  = 3;
+	double tPrice             = 4;
+	double tNearPrice         = 5;
+	string scrip              = 6;
+	string kiteToken          = 7;
+	string exchangeToken      = 8;
+	Exchange Exchange         = 9;
+}
+
+message StartServiceReq {
+	bool override             = 1;
+	bool mock                 = 2;
+}
+
+message StartServiceRes {
+	bool ok                   = 1;
+}
+
+message StopServiceReq {
+	bool override             = 1;
+	bool mock                 = 2;
+}
+
+message StopServiceRes {
+	bool ok                   = 1;
+}
+
+message DeleteTriggerReq {
+    string triggerId          = 1;
+}
+
+message DeleteTriggerRes {
+	bool ok                   = 1;
+}
+
+message CheckServiceHealthReq {}
+
+message CheckServiceHealthRes {
+	bool ok                   = 1;
+}
+
+
+service TriggerService {
+	rpc createTrigger(CreateTriggerReq) returns (CreateTriggerRes) {}
+	rpc getTrigger(GetTriggerReq) returns (GetTriggerRes) {}
+	rpc getTriggerStatus(TriggerStatusReq) returns (TriggerStatusRes) {}
+
+	rpc startService(StartServiceReq) returns (StartServiceRes) {}
+	rpc stopService(StopServiceReq) returns (StopServiceRes) {}
+	rpc deteTrigger(DeleteTriggerReq) returns (DeleteTriggerRes) {}
+	rpc checkServiceHealth(CheckServiceHealthReq) returns (CheckServiceHealthRes) {}
+}
