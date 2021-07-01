@@ -5,3 +5,6 @@
 # NPM Stuff
 node_modules
 package-lock.json
+
+# Exclude server env
+!/grpc/server/.env
